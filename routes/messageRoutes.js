@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Message = require("../models/Message");
+const User = require("../models/User");
 const auth = require("../middleware/authMiddleware");
 const multer = require("multer");
 const cloudinary = require("../config/cloudinary");
@@ -107,6 +108,10 @@ router.get("/recent", auth, async (req, res) => {
   try {
     const userId = req.userId;
 
+    // Get the user's clearedChats
+    const user = await User.findById(userId);
+    const clearedChats = user.clearedChats || {};
+
     const messages = await Message.find({
       $or: [{ sender: userId }, { receiver: userId }]
     })
@@ -118,9 +123,16 @@ router.get("/recent", auth, async (req, res) => {
     messages.forEach((msg) => {
       const other =
         msg.sender._id.toString() === userId ? msg.receiver : msg.sender;
+      const otherId = other._id.toString();
 
-      if (!chatMap[other._id]) {
-        chatMap[other._id] = {
+      // Skip if chat was cleared and this message is before the cleared date
+      const clearedDate = clearedChats.get(otherId);
+      if (clearedDate && msg.createdAt <= clearedDate) {
+        return;
+      }
+
+      if (!chatMap[otherId]) {
+        chatMap[otherId] = {
           user: other,
           lastMessage:
             msg.text ||
@@ -145,12 +157,23 @@ router.get("/history/:id", auth, async (req, res) => {
     const currentUser = req.userId;
     const otherUser = req.params.id;
 
-    const messages = await Message.find({
+    // Get the user's clearedChats to filter messages
+    const user = await User.findById(currentUser);
+    const clearedDate = user.clearedChats?.get(otherUser);
+
+    let query = {
       $or: [
         { sender: currentUser, receiver: otherUser },
         { sender: otherUser, receiver: currentUser }
       ]
-    })
+    };
+
+    // If chat was cleared for me, only show messages after the cleared date
+    if (clearedDate) {
+      query.createdAt = { $gt: clearedDate };
+    }
+
+    const messages = await Message.find(query)
       .sort({ createdAt: 1 })
       .populate("sender receiver", "username avatar");
 
@@ -229,8 +252,11 @@ router.delete("/clear/:id", auth, async (req, res) => {
       return res.json({ message: "Chat cleared for both" });
     }
 
-    // CLEAR CHAT FOR ME (local only)
+    // CLEAR CHAT FOR ME (update user's clearedChats)
     if (mode === "me") {
+      await User.findByIdAndUpdate(userId, {
+        $set: { [`clearedChats.${otherId}`]: new Date() }
+      });
       return res.json({ message: "Chat cleared for me" });
     }
 
@@ -239,7 +265,9 @@ router.delete("/clear/:id", auth, async (req, res) => {
     console.error("Clear chat error:", err);
     res.status(500).json({ message: "Server error" });
   }
-  /* =======================================================
+});
+
+/* =======================================================
    SHARE POST INSIDE CHAT
    POST /api/messages/share/:id
    body: { postId }
@@ -276,8 +304,6 @@ router.post("/share/:id", auth, async (req, res) => {
     console.log("Share post error:", err);
     res.status(500).json({ message: "Server error" });
   }
-});
-
 });
 
 module.exports = router;

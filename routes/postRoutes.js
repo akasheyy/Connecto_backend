@@ -175,6 +175,16 @@ router.put("/:id/like", auth, async (req, res) => {
 
     // send notification only if you like someone else's post
     if (postOwnerId !== me) {
+      const Notification = require("../models/Notification");
+
+      // Save notification to database
+      await Notification.create({
+        type: "like",
+        fromUserId: me,
+        toUserId: postOwnerId,
+        postId: post._id
+      });
+
       io.to(postOwnerId).emit("notification", {
         type: "like",
         fromUserId: me,
@@ -222,6 +232,17 @@ router.post("/:id/comment", auth, async (req, res) => {
     const postOwnerId = post.userId._id.toString();
 
     if (postOwnerId !== me) {
+      const Notification = require("../models/Notification");
+
+      // Save notification to database
+      await Notification.create({
+        type: "comment",
+        fromUserId: me,
+        toUserId: postOwnerId,
+        postId: post._id,
+        text
+      });
+
       io.to(postOwnerId).emit("notification", {
         type: "comment",
         fromUserId: me,

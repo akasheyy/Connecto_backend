@@ -66,6 +66,22 @@ router.put("/:id/follow", auth, updateLastActive, async (req, res) => {
     $addToSet: { followers: currentUser },
   });
 
+  // Send notification
+  const Notification = require("../models/Notification");
+  await Notification.create({
+    type: "follow",
+    fromUserId: currentUser,
+    toUserId: targetUser
+  });
+
+  const io = req.app.get("io");
+  io.to(targetUser).emit("notification", {
+    type: "follow",
+    fromUserId: currentUser,
+    toUserId: targetUser,
+    createdAt: new Date()
+  });
+
   res.json({ message: "Followed user" });
 });
 

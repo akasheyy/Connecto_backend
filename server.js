@@ -11,6 +11,7 @@ const auth = require("./middleware/authMiddleware");
 const postRoutes = require("./routes/postRoutes");
 const userRoutes = require("./routes/userRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 
@@ -121,6 +122,15 @@ socket.on("send_message", async ({ to, text }) => {
     });
 
     // 5. 🔔 real-time notification to receiver
+    const Notification = require("./models/Notification");
+    await Notification.create({
+      type: "message",
+      fromUserId: socket.userId,
+      toUserId: to,
+      messageId: msg._id,
+      text: msg.text
+    });
+
     io.to(to).emit("notification", {
       type: "message",
       fromUserId: socket.userId,
