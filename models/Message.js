@@ -7,74 +7,46 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true
     },
-
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true
     },
-
-    // 📝 TEXT MESSAGE
-    text: {
-      type: String,
-      default: null
-    },
-
-    // 🔊 AUDIO MESSAGE
-    audioUrl: {
-      type: String,
-      default: null
-    },
-    audioDuration: {
-      type: Number,
-      default: null
-    },
-
-    // 📁 FILE MESSAGE
-    fileUrl: {
-      type: String,
-      default: null
-    },
-    fileType: {
-      type: String, // image, video, file
-      default: null
-    },
-    fileName: {
-      type: String,
-      default: null
-    },
-
-    // 🔗 SHARED POST (NEW FEATURE)
+    text: { type: String, default: null },
+    audioUrl: { type: String, default: null },
+    audioDuration: { type: Number, default: null },
+    fileUrl: { type: String, default: null },
+    fileType: { type: String, default: null },
+    fileName: { type: String, default: null },
     sharedPost: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Post",
       default: null
     },
-
-    // message type
     type: {
       type: String,
       enum: ["text", "audio", "file", "shared_post"],
       default: "text"
     },
-
-    // 🗑 Deleted for everyone
+    // 🗑 NEW: For "Delete for Me"
+    // If a user ID is in this array, hide the message for THEM only.
+    deletedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      }
+    ],
+    // 🗑 Deleted for everyone (Existing)
     deletedForEveryone: {
       type: Boolean,
       default: false
     },
-
-    // ✓ single tick, ✓✓ double tick, ✓✓ blue tick
     status: {
       type: String,
       enum: ["sent", "delivered", "seen"],
       default: "sent"
     },
-
-    seenAt: {
-      type: Date,
-      default: null
-    }
+    seenAt: { type: Date, default: null }
   },
   { timestamps: true }
 );

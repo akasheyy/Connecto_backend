@@ -44,6 +44,7 @@ mongoose
   .catch((err) => console.log("DB Error:", err));
 
 // -------------------- ROUTES --------------------
+// -------------------- ROUTES --------------------
 app.get("/", (req, res) => {
   res.send("Backend running...");
 });
@@ -51,7 +52,10 @@ app.get("/", (req, res) => {
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/posts", auth, postRoutes);
 app.use("/api/user", auth, userRoutes);
-app.use("/api/messages", auth, messageRoutes);
+app.use("/api/messages", auth, messageRoutes);        // ✅ REQUIRED
+app.use("/api/notifications", auth, notificationRoutes); // ✅ REQUIRED
+
+
 
 // -------------------- SOCKET SERVER --------------------
 const server = http.createServer(app);
