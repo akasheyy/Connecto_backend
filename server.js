@@ -20,7 +20,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://mern-frontend-mu-ten.vercel.app"
+      "https://connecto-frontend.vercel.app"
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"]
