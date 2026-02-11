@@ -125,14 +125,24 @@ router.get("/history/:id", auth, async (req, res) => {
     const userId = req.userId;
     const otherUserId = req.params.id;
 
-    const messages = await Message.find({
+    const user = await User.findById(userId);
+    const clearedChats = user.clearedChats || {};
+    const clearedDate = clearedChats[otherUserId];
+
+    const query = {
       $or: [
         { sender: userId, receiver: otherUserId },
         { sender: otherUserId, receiver: userId }
       ],
       deletedForEveryone: false,
       deletedBy: { $ne: userId }
-    })
+    };
+
+    if (clearedDate) {
+      query.createdAt = { $gt: clearedDate };
+    }
+
+    const messages = await Message.find(query)
       .sort({ createdAt: 1 })
       .populate("sender receiver", "username avatar");
 
@@ -151,7 +161,7 @@ router.get("/recent", auth, async (req, res) => {
     const userId = req.userId;
 
     const user = await User.findById(userId);
-    const clearedChats = user.clearedChats || new Map();
+    const hiddenMessages = user.hiddenMessages || {};
 
   const messages = await Message.find({
   $or: [{ sender: userId }, { receiver: userId }],
@@ -174,8 +184,8 @@ router.get("/recent", auth, async (req, res) => {
       const otherUserId = otherUser._id.toString();
 
       // 🧹 skip if chat cleared for me
-      const clearedDate = clearedChats.get(otherUserId);
-      if (clearedDate && msg.createdAt <= clearedDate) continue;
+      const hiddenIds = hiddenMessages[otherUserId] || [];
+      if (hiddenIds.includes(msg._id.toString())) continue;
 
       // already added
       if (chatMap.has(otherUserId)) continue;
@@ -217,21 +227,23 @@ router.delete("/:messageId", auth, async (req, res) => {
     }
 
     // DELETE FOR EVERYONE
-    if (mode === "everyone") {
-      if (msg.sender.toString() !== userId) {
-        return res.status(403).json({
-          message: "Only sender can delete for everyone"
-        });
-      }
+   if (mode === "everyone") {
+  if (msg.sender.toString() !== userId) {
+    return res.status(403).json({
+      message: "Only sender can delete for everyone"
+    });
+  }
 
-      await Message.findByIdAndDelete(messageId);
+  msg.deletedForEveryone = true;
+  await msg.save();
 
-      io.to(msg.sender.toString())
-        .to(msg.receiver.toString())
-        .emit("message_deleted", { messageId });
+  io.to(msg.sender.toString())
+    .to(msg.receiver.toString())
+    .emit("message_deleted", { messageId });
 
-      return res.json({ message: "Deleted for everyone" });
-    }
+  return res.json({ message: "Deleted for everyone" });
+}
+
 
     // DELETE FOR ME ✅ FIXED
     if (mode === "me") {
@@ -260,22 +272,23 @@ router.delete("/clear/:id", auth, async (req, res) => {
   const io = req.app.get("io");
 
   try {
-    if (mode === "everyone") {
-      await Message.deleteMany({
+    if (mode === "me") {
+      // Get all message IDs in the chat
+      const messages = await Message.find({
         $or: [
           { sender: me, receiver: other },
           { sender: other, receiver: me }
         ]
-      });
+      }).select('_id');
 
-      io.to(me).to(other).emit("chat_cleared");
-      return res.json({ message: "Chat cleared for both" });
-    }
+      const messageIds = messages.map(m => m._id);
 
-    if (mode === "me") {
+      // Hide all messages for this user
       await User.findByIdAndUpdate(me, {
-        $set: { [`clearedChats.${other}`]: new Date() }
+        $set: { [`hiddenMessages.${other}`]: messageIds }
       });
+
+      io.to(me).emit("chat_cleared");
 
       return res.json({ message: "Chat cleared for me" });
     }
@@ -286,6 +299,7 @@ router.delete("/clear/:id", auth, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 /* =======================================================
    SHARE POST
