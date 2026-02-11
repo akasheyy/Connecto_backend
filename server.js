@@ -60,16 +60,23 @@ app.use("/api/notifications", auth, notificationRoutes); // ✅ REQUIRED
 // -------------------- SOCKET SERVER --------------------
 const server = http.createServer(app);
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://connecto-frontend.vercel.app"
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
 const io = new Server(server, {
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "https://mern-frontend-mu-ten.vercel.app"
-    ],
-    methods: ["GET", "POST"],
+    origin: allowedOrigins,
     credentials: true
   }
 });
+
 
 // Make io available inside routes
 app.set("io", io);
