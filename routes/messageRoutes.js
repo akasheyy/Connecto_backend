@@ -6,6 +6,7 @@ const auth = require("../middleware/authMiddleware");
 const multer = require("multer");
 const cloudinary = require("../config/cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { createMessageNotification } = require("../utils/notificationHelper");
 
 /* =======================================================
    CLOUDINARY STORAGE: AUDIO
@@ -55,6 +56,9 @@ router.post("/file/:id", auth, fileUpload.single("file"), async (req, res) => {
       status: "sent"
     });
 
+    // Create notification for the message
+    await createMessageNotification(sender, receiver, msg);
+
     const io = req.app.get("io");
 
     io.to(sender).to(receiver).emit("new_message", msg);
@@ -98,6 +102,9 @@ router.post(
         status: "sent"
       });
 
+      // Create notification for the message
+      await createMessageNotification(sender, receiver, msg);
+
       const io = req.app.get("io");
 
       io.to(sender).to(receiver).emit("new_message", msg);
@@ -126,8 +133,9 @@ router.get("/history/:id", auth, async (req, res) => {
     const otherUserId = req.params.id;
 
     const user = await User.findById(userId);
-    const clearedChats = user.clearedChats || {};
-    const clearedDate = clearedChats[otherUserId];
+    const clearedChats = user.clearedChats || new Map();
+
+    const clearedDate = clearedChats.get(otherUserId);
 
     const query = {
       $or: [
@@ -138,15 +146,17 @@ router.get("/history/:id", auth, async (req, res) => {
       deletedBy: { $ne: userId }
     };
 
-    if (clearedDate) {
-      query.createdAt = { $gt: clearedDate };
-    }
-
     const messages = await Message.find(query)
       .sort({ createdAt: 1 })
       .populate("sender receiver", "username avatar");
 
-    res.json(messages);
+    // ✅ FILTER CLEARED MESSAGES 🔥
+    const filteredMessages = clearedDate
+      ? messages.filter(msg => msg.createdAt > clearedDate)
+      : messages;
+
+    res.json(filteredMessages);
+
   } catch (err) {
     console.error("Message history error:", err);
     res.status(500).json({ message: "Server Error" });
@@ -222,34 +232,37 @@ router.delete("/:messageId", auth, async (req, res) => {
 
   try {
     const msg = await Message.findById(messageId);
+
     if (!msg) {
       return res.status(404).json({ message: "Message not found" });
     }
 
-    // DELETE FOR EVERYONE
-   if (mode === "everyone") {
-  if (msg.sender.toString() !== userId) {
-    return res.status(403).json({
-      message: "Only sender can delete for everyone"
-    });
-  }
+    /* ---------------- DELETE FOR EVERYONE ---------------- */
 
-  msg.deletedForEveryone = true;
-  await msg.save();
+    if (mode === "everyone") {
+      if (msg.sender.toString() !== userId) {
+        return res.status(403).json({
+          message: "Only sender can delete for everyone",
+        });
+      }
 
-  io.to(msg.sender.toString())
-    .to(msg.receiver.toString())
-    .emit("message_deleted", { messageId });
+      // ✅ SOFT DELETE 🔥
+      msg.deletedForEveryone = true;
+      await msg.save();
 
-  return res.json({ message: "Deleted for everyone" });
-}
+      io.to(msg.sender.toString())
+        .to(msg.receiver.toString())
+        .emit("message_deleted", { messageId });
 
+      return res.json({ message: "Deleted for everyone" });
+    }
 
-    // DELETE FOR ME ✅ FIXED
+    /* ---------------- DELETE FOR ME ---------------- */
+
     if (mode === "me") {
       await Message.updateOne(
         { _id: messageId },
-        { $addToSet: { deletedBy: userId } } // 🔥 SAFE
+        { $addToSet: { deletedBy: userId } }
       );
 
       return res.json({ message: "Deleted for me" });
@@ -273,25 +286,16 @@ router.delete("/clear/:id", auth, async (req, res) => {
 
   try {
     if (mode === "me") {
-      // Get all message IDs in the chat
-      const messages = await Message.find({
-        $or: [
-          { sender: me, receiver: other },
-          { sender: other, receiver: me }
-        ]
-      }).select('_id');
 
-      const messageIds = messages.map(m => m._id);
+  await User.findByIdAndUpdate(me, {
+    $set: { [`clearedChats.${other}`]: new Date() }
+  });
 
-      // Hide all messages for this user
-      await User.findByIdAndUpdate(me, {
-        $set: { [`hiddenMessages.${other}`]: messageIds }
-      });
+  io.to(me).emit("chat_cleared");
 
-      io.to(me).emit("chat_cleared");
+  return res.json({ message: "Chat cleared for me" });
+}
 
-      return res.json({ message: "Chat cleared for me" });
-    }
 
     res.status(400).json({ message: "Invalid mode" });
   } catch (err) {
@@ -321,6 +325,9 @@ router.post("/share/:id", auth, async (req, res) => {
       sharedPost: postId,
       status: "sent"
     });
+
+    // Create notification for the message
+    await createMessageNotification(sender, receiver, msg);
 
     const io = req.app.get("io");
     io.to(sender).to(receiver).emit("new_message", msg);

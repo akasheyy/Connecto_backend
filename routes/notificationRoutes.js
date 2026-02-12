@@ -13,11 +13,11 @@ router.get("/", auth, updateLastActive, async (req, res) => {
       .populate("fromUserId", "username avatar")
       .populate("postId", "title description image")
       .sort({ createdAt: -1 })
-      .limit(50); // Limit to last 50 notifications
+      .limit(50);
 
     res.json(notifications);
   } catch (err) {
-    console.log(err);
+    console.log("Get notifications error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -29,7 +29,8 @@ router.put("/:id/read", auth, updateLastActive, async (req, res) => {
   try {
     const notification = await Notification.findById(req.params.id);
 
-    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    if (!notification)
+      return res.status(404).json({ message: "Notification not found" });
 
     if (notification.toUserId.toString() !== req.userId)
       return res.status(403).json({ message: "Unauthorized" });
@@ -39,7 +40,7 @@ router.put("/:id/read", auth, updateLastActive, async (req, res) => {
 
     res.json({ message: "Notification marked as read" });
   } catch (err) {
-    console.log(err);
+    console.log("Mark read error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -56,7 +57,7 @@ router.put("/read-all", auth, updateLastActive, async (req, res) => {
 
     res.json({ message: "All notifications marked as read" });
   } catch (err) {
-    console.log(err);
+    console.log("Read all error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -68,7 +69,8 @@ router.delete("/:id", auth, updateLastActive, async (req, res) => {
   try {
     const notification = await Notification.findById(req.params.id);
 
-    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    if (!notification)
+      return res.status(404).json({ message: "Notification not found" });
 
     if (notification.toUserId.toString() !== req.userId)
       return res.status(403).json({ message: "Unauthorized" });
@@ -77,7 +79,7 @@ router.delete("/:id", auth, updateLastActive, async (req, res) => {
 
     res.json({ message: "Notification deleted" });
   } catch (err) {
-    console.log(err);
+    console.log("Delete notification error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -94,7 +96,7 @@ router.get("/unread-count", auth, updateLastActive, async (req, res) => {
 
     res.json({ count });
   } catch (err) {
-    console.log(err);
+    console.log("Unread count error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
