@@ -224,51 +224,53 @@ router.get("/recent", auth, async (req, res) => {
 /* =======================================================
    DELETE MESSAGE (🔥 FIXED)
 ======================================================= */
+/* =======================================================
+   DELETE MESSAGE (🔥 FULL FIXED)
+======================================================= */
 router.delete("/:messageId", auth, async (req, res) => {
   const { mode } = req.body;
   const messageId = req.params.messageId;
-  const userId = req.userId;
+  const me = req.userId;
   const io = req.app.get("io");
 
   try {
-    const msg = await Message.findById(messageId);
+    const message = await Message.findById(messageId);
 
-    if (!msg) {
+    if (!message) {
       return res.status(404).json({ message: "Message not found" });
     }
 
-    /* ---------------- DELETE FOR EVERYONE ---------------- */
-
-    if (mode === "everyone") {
-      if (msg.sender.toString() !== userId) {
-        return res.status(403).json({
-          message: "Only sender can delete for everyone",
-        });
-      }
-
-      // ✅ SOFT DELETE 🔥
-      msg.deletedForEveryone = true;
-      await msg.save();
-
-      io.to(msg.sender.toString())
-        .to(msg.receiver.toString())
-        .emit("message_deleted", { messageId });
-
-      return res.json({ message: "Deleted for everyone" });
-    }
-
     /* ---------------- DELETE FOR ME ---------------- */
-
     if (mode === "me") {
       await Message.updateOne(
         { _id: messageId },
-        { $addToSet: { deletedBy: userId } }
+        { $addToSet: { deletedBy: me } }
       );
+
+      io.to(me).emit("message_deleted", { messageId });
 
       return res.json({ message: "Deleted for me" });
     }
 
-    res.status(400).json({ message: "Invalid mode" });
+    /* ---------------- DELETE FOR EVERYONE 🔥 ---------------- */
+    if (mode === "everyone") {
+
+   if (!message.sender.equals(me)) {
+      return res.status(403).json({
+         message: "You can only delete your messages"
+      });
+   }
+
+   await message.deleteOne();
+
+   io.to(message.sender.toString())
+     .to(message.receiver.toString())
+     .emit("message_deleted", { messageId });
+
+   return res.json({ message: "Deleted for everyone" });
+}
+
+
   } catch (err) {
     console.error("Delete message error:", err);
     res.status(500).json({ message: "Server error" });
